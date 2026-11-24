@@ -48,6 +48,8 @@ p{margin:0}
   display:flex;align-items:center;justify-content:center;box-shadow:0 8px 0 #0006,inset 0 -6px 0 #0002;animation:pop .28s cubic-bezier(.3,1.6,.5,1) both}
 .tile.c{background:linear-gradient(#FFE14A,#F7B500)}
 .tile.v{background:linear-gradient(#5CF2C3,#21C79A);cursor:pointer}
+.tile.v.need{animation:need 1s ease-in-out infinite!important}
+@keyframes need{50%{transform:translateY(-8px);box-shadow:0 16px 0 #0006,inset 0 -6px 0 #0002,0 0 0 5px #FFE14A}}
 .tile.s{background:linear-gradient(#D9D6F5,#ABA6DA)}
 .tile.small{width:84px;height:96px;font-size:56px;border-radius:20px}
 .tile .acc{position:absolute;top:-30px;left:50%;width:14px;height:40px;background:var(--title);border-radius:7px;transform:translateX(-30%) rotate(32deg);box-shadow:0 0 12px #FFE14A}
@@ -340,7 +342,7 @@ return {analyze:analyze,traits:traits,slotOptions:slotOptions,isV:isV,isSign:isS
 (function(){
 "use strict";
 var $=function(id){return document.getElementById(id);};
-var sound=true, word="", stressIdx=-1, reduce=true, A=null, st=null, doneCount=0;
+var sound=true, word="", stressIdx=-1, manual=false, reduce=true, A=null, st=null, doneCount=0;
 try{doneCount=+localStorage.getItem("fon_done")||0;}catch(e){}
 
 /* ---------- sounds ---------- */
@@ -361,9 +363,12 @@ ROWS.forEach(function(r,ri){var d=document.createElement("div");d.className="kro
   $("kb").appendChild(d);});
 function vowelIdx(w){var r=[];for(var i=0;i<w.length;i++)if(PH.isV(w[i]))r.push(i);return r;}
 function autoStress(){var v=vowelIdx(word);var yo=word.indexOf("ё");
-  if(yo>=0)stressIdx=yo; else if(v.length===1)stressIdx=v[0]; else if(stressIdx>=0&&word[stressIdx]&&PH.isV(word[stressIdx]))return; else stressIdx=-1;}
+  /* ударение, поставленное учителем вручную, сохраняется; автоматически — только для «ё» и слов с одной гласной */
+  if(manual&&stressIdx>=0&&word[stressIdx]&&PH.isV(word[stressIdx]))return;
+  manual=false;
+  if(yo>=0)stressIdx=yo; else if(v.length===1)stressIdx=v[0]; else stressIdx=-1;}
 function typeK(k){
-  if(k==="clear"){word="";stressIdx=-1;} else if(k==="back")word=word.slice(0,-1); else if(word.length<14)word+=k; else return;
+  if(k==="clear"){word="";stressIdx=-1;manual=false;} else if(k==="back")word=word.slice(0,-1); else if(word.length<14)word+=k; else return;
   if(stressIdx>=word.length)stressIdx=-1; autoStress(); tone([520]); drawTiles();
 }
 function drawTiles(){
@@ -372,16 +377,16 @@ function drawTiles(){
   var small=word.length>9;
   word.split("").forEach(function(c,i){var d=document.createElement("div");
     d.className="tile "+(PH.isV(c)?"v":PH.isSign(c)?"s":"c")+(small?" small":"");d.textContent=c;
-    if(i===stressIdx&&vowelIdx(word).length>1){var a=document.createElement("span");a.className="acc";d.appendChild(a);}
-    if(PH.isV(c))d.addEventListener("click",function(){if(word.indexOf("ё")>=0)return;stressIdx=i;tone([700]);drawTiles();});
+    if(i===stressIdx&&(vowelIdx(word).length>1||manual)){var a=document.createElement("span");a.className="acc";d.appendChild(a);}
+    if(PH.isV(c)){if(stressIdx<0)d.className+=" need";d.addEventListener("click",function(){var one=vowelIdx(word).length===1;stressIdx=i;manual=one?!manual:true;tone([700]);drawTiles();});}
     if(i<word.length-1)d.style.animation="none";
     t.appendChild(d);});
   var v=vowelIdx(word),m=$("wmsg");m.className="";
   if(!word)m.textContent="Напиши слово на клавиатуре";
   else if(!v.length)m.textContent="В слове должна быть хотя бы одна гласная.";
-  else if(stressIdx<0){m.textContent="Учитель: нажми на ударную гласную — так отметится ударение для проверки.";}
-  else if(v.length===1){m.className="y";m.textContent="В слове одна гласная — один слог. Ударение в таком слове не ставим.";}
-  else{m.className="y";m.textContent="Ударение отмечено для проверки. В разборе слово появится без него — ударение нужно будет поставить самому.";}
+  else if(stressIdx<0){m.textContent="Поставь ударение: нажми на ударную гласную (зелёную плитку) — над ней появится чёрточка.";}
+  else if(v.length===1){m.className="y";m.textContent=manual?"Ударение на «"+word[stressIdx]+"» поставлено. Нажми на гласную ещё раз, чтобы убрать чёрточку.":"В слове одна гласная — ударение обычно не ставят. Хочешь поставить — нажми на гласную.";}
+  else{m.className="y";m.textContent="Ударение на «"+word[stressIdx]+"». Не там? Нажми на другую гласную — чёрточка переедет. В разборе ученик ставит ударение сам.";}
   $("go").disabled=!(word&&v.length&&stressIdx>=0);
 }
 function setRed(v){reduce=v;$("redBox").setAttribute("aria-checked",v);$("redBox").querySelector("b").textContent=v?"✓":"";}
@@ -394,11 +399,11 @@ function dec(n,a,b,c){var x=n%10,y=n%100;return (x===1&&y!==11)?a:(x>=2&&x<=4&&(
 var toastT=null;function toast(t){var e=$("toast");e.textContent=t||"Верно!";e.classList.add("on");clearTimeout(toastT);toastT=setTimeout(function(){e.classList.remove("on");},850);}
 function plural(n){var a=n%10,b=n%100;return (a===1&&b!==11)?"слог":(a>=2&&a<=4&&(b<12||b>14))?"слога":"слогов";}
 function startParse(){
-  A=PH.analyze(word,stressIdx,reduce);
+  A=PH.analyze(word,stressIdx,reduce);A.mark=A.syl>1||manual;
   st={div:[],divDone:false,stress:-1,syl:null,cur:0,entry:[],soundsDone:A.rows.map(function(){return false;}),traits:A.rows.map(function(r){return r.sounds.map(function(){return [];});}),
       counts:{l:0,s:0},countsDone:false,phase:"stress",ci:0,si:0,mode:(st&&st.mode)||"ready",buf:"",disp:A.rows.map(function(r){return r.sounds.map(function(){return [];});})};
   $("s1").classList.remove("on");$("s2").classList.add("on");$("title").textContent="Фонетический разбор";$("newW").classList.add("on");$("cnt").style.display="none";
-  render();setPhase(A.syl>1?"stress":"syl");speak(word);
+  render();setPhase(A.mark?"stress":"syl");speak(word);
 }
 function setPhase(p){st.phase=p;render();panel();}
 /* ---------- notebook render ---------- */
@@ -412,7 +417,7 @@ function render(){
     wl+='<span class="wl'+(PH.isV(c)?" vv":"")+'" data-i="'+i+'">'+c+(st.stress===i?'<span class="acc"></span>':'')+'</span>';});
   wl+='</span>';
   var allSounds=st.soundsDone.every(Boolean);
-  var tr=symHTML([].concat.apply([],A.rows.map(function(r,i){return st.soundsDone[i]?r.sounds:[];})),A.syl>1)+(allSounds?'':'<span style="color:#C33;font-family:var(--font);font-size:30px">&nbsp;…&nbsp;</span>');
+  var tr=symHTML([].concat.apply([],A.rows.map(function(r,i){return st.soundsDone[i]?r.sounds:[];})),A.mark)+(allSounds?'':'<span style="color:#C33;font-family:var(--font);font-size:30px">&nbsp;…&nbsp;</span>');
   var sylTxt=st.syl!=null?' <span class="dash">—</span> <span class="hw syl">'+st.syl+' '+plural(st.syl)+'</span>':'';
   h+='<div class="row'+(st.phase==="stress"||st.phase==="syl"||st.phase==="div"?" cur":"")+'">'+wl+' <span class="dash">—</span> <span class="box'+(allSounds?" ok":"")+' hw" style="font-size:56px;min-width:120px">['+tr+']</span>'+sylTxt+'</div>';
   // letters column
@@ -420,7 +425,7 @@ function render(){
     var cur=(st.phase==="sound"||st.phase==="trait")&&st.ci===i;
     var done=st.soundsDone[i];
     var boxCls="box hw"+(cur&&st.phase==="sound"?" act":"")+(done?" ok":"");
-    var inner=done?(r.sounds.length?"["+symHTML(r.sounds,A.syl>1)+"]":"[ – ]"):(cur&&st.phase==="sound"?"["+(st.entry.length?st.entry.map(function(t){return '<span class="sym">'+(t==="none"?" – ":t)+'</span>';}).join(""):"&nbsp;&nbsp;&nbsp;")+"]":"[&nbsp;&nbsp;&nbsp;]");
+    var inner=done?(r.sounds.length?"["+symHTML(r.sounds,A.mark)+"]":"[ – ]"):(cur&&st.phase==="sound"?"["+(st.entry.length?st.entry.map(function(t){return '<span class="sym">'+(t==="none"?" – ":t)+'</span>';}).join(""):"&nbsp;&nbsp;&nbsp;")+"]":"[&nbsp;&nbsp;&nbsp;]");
     var line='<span class="hw lab" style="min-width:40px">'+r.letter+'</span><span class="dash">—</span><span class="'+boxCls+'" style="font-size:56px" data-box="'+i+'">'+inner+'</span>';
     if(done&&!r.sounds.length) line+='<span class="dash">—</span><span class="note">'+r.note+'</span>';
     var canClick=!done&&st.phase!=="stress"&&st.phase!=="syl"&&st.phase!=="count"&&st.phase!=="fin";
@@ -452,7 +457,7 @@ function traitText(ri,si,s){
   return s.kind==="v"?p[0]+", "+p[1]:p[0]+", "+p[1]+" "+p[2]+", "+p[3]+" "+p[4];
 }
 function stepsHTML(){
-  var all=[];if(A.syl>1)all.push(["stress","Ударение"]);all.push(["syl","Слоги"],["snd","Звуки"],["count","Буквы и звуки"]);
+  var all=[];if(A.mark)all.push(["stress","Ударение"]);all.push(["syl","Слоги"],["snd","Звуки"],["count","Буквы и звуки"]);
   var cur=st.phase==="sound"||st.phase==="trait"?"snd":st.phase==="div"?"syl":st.phase,idx=all.map(function(x){return x[0];}).indexOf(cur);
   return all.map(function(x,i){return '<span class="'+(i<idx||st.phase==="fin"?"ok":i===idx?"cur":"")+'">'+(i<idx||st.phase==="fin"?"✓ ":(i+1)+" ")+x[1]+'</span>';}).join("");
 }
@@ -491,7 +496,7 @@ function panel(){
 }
 /* stress */
 function pickStress(i){
-  if(i===A.stress){st.stress=i;good();setPhase("div");say("Верно! Ударение на «"+A.letters[i]+"».");}
+  if(i===A.stress){st.stress=i;good();setPhase(A.syl>1?"div":"syl");say("Верно! Ударение на «"+A.letters[i]+"».");}
   else{bad();say("Произнеси слово, позови его голосом: «"+word+"!» — какой гласный тянется?","bad");}
 }
 function toggleGap(p){var k=st.div.indexOf(p);if(k>=0)st.div.splice(k,1);else st.div.push(p);st.badGap=null;tone([640]);render();}
@@ -702,7 +707,7 @@ function confetti(){var cols=["#FFE14A","#F2477E","#1FD8A4","#A88BFF","#4FA3FF"]
 /* ---------- buttons ---------- */
 function toWord(keep){$("fin").classList.remove("on");$("askNew").classList.remove("on");$("s2").classList.remove("on");$("s1").classList.add("on");$("title").textContent="Запиши слово";$("newW").classList.remove("on");$("cnt").style.display="";
   st=null;A=null;
-  if(!keep){word="";stressIdx=-1;}drawTiles();}
+  if(!keep){word="";stressIdx=-1;manual=false;}drawTiles();}
 $("again").addEventListener("click",function(){toWord(false);});
 $("newW").addEventListener("click",function(){ if(st&&st.phase!=="fin"&&(st.syl!=null||st.stress>=0))$("askNew").classList.add("on"); else toWord(false); });
 $("askYes").addEventListener("click",function(){toWord(false);});
@@ -729,7 +734,7 @@ document.addEventListener("keydown",function(e){
 var stage=$("stage");
 function fit(){var s=Math.min(window.innerWidth/1600,window.innerHeight/900);stage.style.transform="translate(-50%,-50%) scale("+s+")";}
 window.addEventListener("resize",fit);fit();drawTiles();$("cntN").textContent=doneCount;
-window.__dbg={get A(){return A;},get st(){return st;},type:function(w,s){word=w;stressIdx=s;drawTiles();},start:startParse,stress:pickStress,syl:pickSyl,enter:enter,place:place,tkey:tkey,gap:toggleGap,checkDiv:checkDiv,divError:function(p){return divError(p);},newWord:function(){$("newW").click();},yes:function(){$("askYes").click();},typeK:typeK,checkSound:checkSound,fly:function(v){var r=READY.filter(function(x){return x[0]===v;})[0];var b=[].slice.call(document.querySelectorAll(".rk")).filter(function(x){return x.getAttribute("aria-label")===v;})[0];fly(b,r[0],r[1]);},cnt:cnt,check:checkCounts};
+window.__dbg={get A(){return A;},get st(){return st;},type:function(w,s){word=w;stressIdx=s;manual=s>=0;drawTiles();},start:startParse,stress:pickStress,syl:pickSyl,enter:enter,place:place,tkey:tkey,gap:toggleGap,checkDiv:checkDiv,divError:function(p){return divError(p);},newWord:function(){$("newW").click();},yes:function(){$("askYes").click();},typeK:typeK,checkSound:checkSound,fly:function(v){var r=READY.filter(function(x){return x[0]===v;})[0];var b=[].slice.call(document.querySelectorAll(".rk")).filter(function(x){return x.getAttribute("aria-label")===v;})[0];fly(b,r[0],r[1]);},cnt:cnt,check:checkCounts};
 })();
 </script>
 </body>
